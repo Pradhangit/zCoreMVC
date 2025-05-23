@@ -1,0 +1,1537 @@
+{
+    "ConnectionStrings": {
+        "MyCon": "Data Source=Server6;Initial Catalog=CachDB10;Persist Security Info=True;User ID=User10;Password=csmpl@132;Encrypt=False"
+    },
+    "Logging": {
+        "LogLevel": {
+            "Default": "Information",
+            "Microsoft.AspNetCore": "Warning"
+        }
+    },
+    "AllowedHosts": "*",
+    "ApiSettings": {
+        "BaseUrl": "http://localhost:5236"
+    }
+}
+------------------------------------------------------
+//var builder = WebApplication.CreateBuilder(args);
+
+
+
+using Microsoft.AspNetCore.Authentication.Cookies;
+
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using System.Diagnostics.Metrics;
+using AuthenticationWebAPI5.Model;
+using CoreMVC.Repository;
+using AuthenticationWebAPI5.Authentication;
+
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container
+builder.Services.AddControllersWithViews();
+builder.Services.AddSession();
+builder.Services.AddHttpClient();
+
+
+builder.Services.AddScoped<IProdRepository, ProdRepository>();
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("MyCon")));
+
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddCookie(options =>
+{
+    options.LoginPath = "/Login/Login";
+    options.AccessDeniedPath = "/Login/AccessDenied";
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("BySKJL8jdckwkhGH431NVhsqVF778bhjd5GHIOUJHfghgjiouyfghjhKYTERhgsacjYTFjhgkkjhjkDFJHMNB65vgvHGDFG5456dhdcvhye6342667NGFGHGH"))
+    };
+});
+
+
+var app = builder.Build();
+
+// Middleware pipeline
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+}
+app.UseStaticFiles();
+
+app.UseRouting();
+app.UseSession();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Login}/{action=Login}/{id?}");
+
+app.Run();
+----------------------------------------------------------------------------------
+using System.ComponentModel.DataAnnotations;
+
+namespace CoreMVC.Models
+{
+    public class Category
+    {
+        public int CategoryId { get; set; }
+
+        [Required]
+        public string CategoryName { get; set; }
+
+        public ICollection<Subcategory> Subcategories { get; set; } = new List<Subcategory>();
+
+    }
+}
+----------------------------------------
+using CoreMVC.Models;
+using System.ComponentModel.DataAnnotations;
+
+public class Subcategory
+{
+    public int SubcategoryId { get; set; }
+
+    [Required]
+    public string SubcategoryName { get; set; }
+
+    public int CategoryId { get; set; }
+    public Category Category { get; set; }
+
+    public ICollection<Product> Products { get; set; } = new List<Product>();
+}
+--------------------------------------------------------------------------
+using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations;
+
+namespace CoreMVC.Models
+{
+    public class Product
+    {
+        [Key]
+        public int ProductId { get; set; }
+
+        [ForeignKey("Category")]
+        public int CategoryId { get; set; }
+
+        [ForeignKey("SubCategory")]
+        public int SubCategoryId { get; set; }
+
+        [Required]
+        [MaxLength(100)]
+        public string ProductName { get; set; }
+
+        [MaxLength(500)]
+        public string Description { get; set; }
+
+        [Required]
+        public decimal Price { get; set; }
+
+        [Required]
+        public int Stock { get; set; }
+
+        [MaxLength(200)]
+        public string ImagePath { get; set; }
+
+        public Category Category { get; set; }
+        public Subcategory SubCategory { get; set; }
+    }
+}
+---------------------------------------------------------------
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace CoreMVC.Models
+{
+    public class ProductSalesViewModel
+    {
+        // For rendering dropdowns
+        public List<Category> Categories { get; set; } = new();
+        public List<Subcategory> SubCategories { get; set; } = new();
+        public List<Product> Products { get; set; } = new();
+
+        [Required]
+        public int? SelectedCategoryId { get; set; }
+
+        [Required]
+        public int? SelectedSubCategoryId { get; set; }
+
+        [Required]
+        public int? SelectedProductId { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Enter a valid quantity.")]
+        public int Quantity { get; set; }
+
+        public decimal TotalPrice { get; set; } // You may want to validate this on the server too
+
+        public DateTime OrderDate { get; set; } = DateTime.Now;
+
+        // Not submitted - just display
+        [NotMapped]
+        public int AvailableStock { get; set; }
+
+        [NotMapped]
+        public decimal BasePrice { get; set; }
+    }
+
+}
+--------------------------------------------------------------------------
+namespace CoreMVC.Models
+{
+    public class Order
+    {
+        public int Id { get; set; }
+        public int ProductId { get; set; }
+        public string UserId { get; set; }
+        public int Quantity { get; set; }
+        public DateTime OrderDate { get; set; }
+        public string Status { get; set; } = "Under Processing";
+
+        public string Username { get; set; }
+        public string ProductName { get; set; }
+    }
+}
+-------------------------------------------------------------
+namespace CoreMVC.Models
+{
+    public class LoginViewModel
+    {
+        public string Username { get; set; }
+        public string Password { get; set; }
+    }
+}
+----------------------------------------------------
+using System.ComponentModel.DataAnnotations;
+
+namespace CoreMVC.Models
+{
+    public enum Gender
+    {
+        Male,
+        Female,
+        Others
+    }
+    public class RegisterViewModel
+    {
+        [Required(ErrorMessage = "Full Name is required")]
+        [StringLength(100, ErrorMessage = "Full Name should not exceed 100 characters.")]
+        public string FullName { get; set; }
+
+        [Required(ErrorMessage = "Username is required")]
+        [RegularExpression(@"^[a-zA-Z0-9_]+$", ErrorMessage = "Username can only contain letters, numbers, and underscores.")]
+        public string Username { get; set; }
+
+        [Required(ErrorMessage = "Password is required")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters long.")]
+        [DataType(DataType.Password)]
+        [RegularExpression(@"^(?=.*[A-Z])(?=.*\d).+$", ErrorMessage = "Password must contain at least one uppercase letter and one number.")]
+        public string Password { get; set; }
+
+        [Required(ErrorMessage = "Confirm Password is required")]
+        [DataType(DataType.Password)]
+        [Compare("Password", ErrorMessage = "Confirm Password must match Password.")]
+        public string ConfirmPassword { get; set; }
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid Email format.")]
+        public string Email { get; set; }
+
+        [Required(ErrorMessage = "Gender is required")]
+        public Gender Gender { get; set; }
+
+        [Display(Name = "Qualifications")]
+        public List<string> Qualifications { get; set; } = new List<string>();
+
+        [Required(ErrorMessage = "Country is required")]
+        public string Country { get; set; }
+
+        [Required(ErrorMessage = "State is required")]
+        public string State { get; set; }
+
+        [Required(ErrorMessage = "Profile Image is required")]
+        [DataType(DataType.Upload)]
+        public IFormFile Image { get; set; }
+
+        [Required(ErrorMessage = "File Upload is required")]
+        [DataType(DataType.Upload)]
+        public IFormFile FileUpload { get; set; }
+        public string UserRole { get; set; }
+    }
+}
+--------------------------------------------------------------------------------------
+namespace CoreMVC.Models
+{
+    public class SalesData
+    {
+        public int SalesId { get; set; }
+        public int ProductId { get; set; }
+        public string ProductName { get; set; }
+        public string CustomerName { get; set; }
+        public int RequiredQuantity { get; set; }
+        public DateTime OrderDate { get; set; }
+        public decimal TotalPrice { get; set; }
+        public string Status { get; set; } 
+
+
+    }
+}
+----------------------------------------------------------------------
+namespace CoreMVC.Models
+{
+    public class ProfileViewModel
+    {
+        public string FullName { get; set; }
+        public string Username { get; set; }
+        public string Email { get; set; }
+        public string Gender { get; set; }
+        public string Country { get; set; }
+        public string State { get; set; }
+        public string ImagePath { get; set; }
+        public string FileUploadPath { get; set; }
+        public List<string> Qualifications { get; set; } = new List<string>();
+        public string Role { get; set; }
+    }
+}
+---------------------------------------------------------------------------
+using Microsoft.Data.SqlClient;
+
+namespace CoreMVC.Repository
+{
+    public class BaseRepository
+    {
+        private readonly IConfiguration _configuration;
+        public BaseRepository(IConfiguration configuration)
+        {
+            _configuration = configuration;
+        }
+        public SqlConnection connect()
+        {
+            return new SqlConnection(_configuration.GetConnectionString("MyCon"));
+        }
+    }
+}
+-----------------------------------------------
+using CoreMVC.Models;
+
+namespace CoreMVC.Repository
+{
+    public interface IProdRepository
+    {
+        List<Category> GetCategories();
+        List<Subcategory> GetSubcategories(int categoryId);
+        List<Product> GetProducts(int subcategoryId);
+        Product GetProductById(int productId);
+        string SubmitSales(SalesData salesData);
+        List<SalesData> GetSalesByCustomer(string customerName);
+        List<Order> GetAllOrders();
+        bool UpdateOrderStatus(int orderId, string newStatus);
+    }
+}
+------------------------------------------
+using CoreMVC.Models;
+using Dapper;
+using Microsoft.Data.SqlClient;
+using System.Data;
+
+namespace CoreMVC.Repository
+{
+    public class ProdRepository: BaseRepository, IProdRepository
+    {
+        public ProdRepository(IConfiguration configuration) : base(configuration)
+        {
+        }
+
+        // Get categories
+        public List<Category> GetCategories()
+        {
+            using var con = connect();
+            var query = "SELECT CategoryId, CategoryName FROM Categories_kpr1";
+            return con.Query<Category>(query).ToList();
+        }
+
+        // Get subcategories based on categoryId
+        public List<Subcategory> GetSubcategories(int categoryId)
+        {
+            using var con = connect();
+            var query = "SELECT SubCategoryId, CategoryId, SubCategoryName FROM SubCategories_kpr1 WHERE CategoryId = @CategoryId";
+            return con.Query<Subcategory>(query, new { CategoryId = categoryId }).ToList();
+        }
+
+        // Get products based on subcategoryId
+        public List<Product> GetProducts(int subcategoryId)
+        {
+            using var con = connect();
+            var query = @"SELECT ProductId, ProductName, Description, Price, Stock, ImagePath, CategoryId, SubCategoryId 
+                          FROM Products_kpr1 WHERE SubCategoryId = @SubCategoryId";
+            return con.Query<Product>(query, new { SubCategoryId = subcategoryId }).ToList();
+        }
+
+        // Get product details by ProductId
+        public Product GetProductById(int productId)
+        {
+            using var con = connect();
+            var query = "SELECT * FROM Products_kpr1 WHERE ProductId = @ProductId";
+            return con.QueryFirstOrDefault<Product>(query, new { ProductId = productId });
+        }
+
+        // Submit a sale to the Sales table
+        public string SubmitSales(SalesData salesData)
+        {
+            using var con = connect();
+
+            // Insert the sale
+            var insertQuery = @"
+            INSERT INTO Sales_kpr1 (ProductId, CustomerName, RequiredQuantity, OrderDate, TotalPrice)
+            VALUES (@ProductId, @CustomerName, @RequiredQuantity, @OrderDate, @TotalPrice)";
+            con.Execute(insertQuery, salesData);
+
+            // Decrease the stock
+            var updateQuery = @"
+            UPDATE Products_kpr1
+            SET Stock = Stock - @RequiredQuantity
+            WHERE ProductId = @ProductId";
+            con.Execute(updateQuery, salesData);
+
+            return "Order placed successfully.";
+        }
+
+        public List<SalesData> GetSalesByCustomer(string customerName)
+        {
+            using var con = connect();
+
+            string query = @"SELECT s.SalesId, s.ProductId, p.ProductName, s.CustomerName,
+                 s.RequiredQuantity, s.OrderDate, s.TotalPrice, s.Status
+                 FROM Sales_kpr1 s
+                 JOIN Products_kpr1 p ON s.ProductId = p.ProductId
+                 WHERE s.CustomerName = @CustomerName";
+
+            return con.Query<SalesData>(query, new { CustomerName = customerName }).ToList();
+        }
+
+        public List<Order> GetAllOrders()
+        {
+            using (var connection = connect())
+            {
+                var query = @"SELECT 
+                        s.SalesId AS Id,
+                        s.ProductId,
+                        s.CustomerName AS Username,
+                        s.RequiredQuantity AS Quantity,
+                        s.OrderDate,
+                        s.Status,
+                        p.ProductName
+                      FROM Sales_kpr1 s
+                      JOIN Products_kpr1 p ON s.ProductId = p.ProductId";
+                return connection.Query<Order>(query).ToList();
+            }
+        }
+
+        public bool UpdateOrderStatus(int orderId, string newStatus)
+        {
+            using (var connection = connect())
+            {
+                string query = "UPDATE Sales_kpr1 SET Status = @Status WHERE SalesId = @SalesId";
+                var affectedRows = connection.Execute(query, new { Status = newStatus, SalesId = orderId });
+                return affectedRows > 0;
+            }
+        }
+
+    }
+}
+-------------------------------------------------------------------------------------------
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc;
+using CoreMVC.Models;
+using Newtonsoft.Json;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Identity;
+using AuthenticationWebAPI5.Authentication;
+using AuthenticationWebAPI5.Model;
+
+namespace CoreMVC.Controllers
+{
+    public class LoginController : Controller
+    {
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
+        private readonly SignInManager<ApplicationUser> _signInManager;
+
+        public LoginController(IHttpClientFactory httpClientFactory, IConfiguration configuration, SignInManager<ApplicationUser> signInManager)
+        {
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
+            _signInManager = signInManager;
+        }
+
+        public IActionResult Login()
+        {
+            ViewBag.Msg = "";
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Login(LoginViewModel model)
+        {
+            if (!ModelState.IsValid)
+                return View(model);
+
+            var client = _httpClientFactory.CreateClient();
+            client.BaseAddress = new Uri(_configuration["ApiSettings:BaseUrl"]);
+
+            var content = new StringContent(JsonConvert.SerializeObject(model), Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("api/Authenticate/Login", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseString = await response.Content.ReadAsStringAsync();
+                var jwtToken = JsonConvert.DeserializeObject<JwtTokenResponse>(responseString);
+
+                HttpContext.Session.SetString("JWToken", jwtToken.token);
+
+                var handler = new JwtSecurityTokenHandler();
+                var token = handler.ReadJwtToken(jwtToken.token);
+
+                var username = token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
+                var role = token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+                var userId = token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+
+                HttpContext.Session.SetString("Username", username ?? "");
+                HttpContext.Session.SetString("Role", role ?? "");
+
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.NameIdentifier, userId ?? ""),
+                    new Claim(ClaimTypes.Name, username ?? ""),
+                    new Claim(ClaimTypes.Role, role ?? "")
+                };
+
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var principal = new ClaimsPrincipal(identity);
+
+                await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+                if (role == "Admin")
+                    return RedirectToAction("Index", "AdminDashboard");
+                else if (role == "User")
+                    return RedirectToAction("Index", "UserDashboard");
+                else
+                    return RedirectToAction("Dashboard");
+            }
+            else
+            {
+                ViewBag.Msg = "Invalid Login Attempt";
+                return View(model);
+            }
+        }
+        public IActionResult Register()
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.BaseAddress = new Uri(_configuration["ApiSettings:BaseUrl"]);
+
+            // Call the API to get countries
+            var countryResponse = client.GetAsync("api/Authenticate/GetCountries").Result;
+
+            if (countryResponse.IsSuccessStatusCode)
+            {
+                var countryJson = countryResponse.Content.ReadAsStringAsync().Result;
+                var countries = JsonConvert.DeserializeObject<List<Country>>(countryJson);
+                ViewBag.Countries = countries;
+            }
+            else
+            {
+                ViewBag.Countries = new List<Country>(); // fallback
+            }
+
+            ViewBag.AvailableQualifications = new List<string>
+            {
+                "10th", "12th", "Diploma", "Graduate", "Post Graduate"
+            };
+
+            return View(new RegisterViewModel());
+        }
+
+
+
+        [HttpPost]
+        public async Task<IActionResult> Register(RegisterViewModel model)
+        {
+            // Always set ViewBag before returning the view!
+            ViewBag.AvailableQualifications = new List<string>
+            {
+                "10th",
+                "12th",
+                "Diploma",
+                "Graduate",
+                "Post Graduate"
+            };
+
+            if (!ModelState.IsValid)
+                return View(model);
+
+            var client = _httpClientFactory.CreateClient();
+            client.BaseAddress = new Uri(_configuration["ApiSettings:BaseUrl"]);
+
+            var countryResponse = client.GetAsync("api/Authenticate/GetCountries").Result;
+            if (countryResponse.IsSuccessStatusCode)
+            {
+                var countryJson = countryResponse.Content.ReadAsStringAsync().Result;
+                var countries = JsonConvert.DeserializeObject<List<Country>>(countryJson);
+                ViewBag.Countries = countries;
+            }
+            else
+            {
+                ViewBag.Countries = new List<Country>();
+            }
+
+            using (var form = new MultipartFormDataContent())
+            {
+                form.Add(new StringContent(model.FullName ?? ""), "FullName");
+                form.Add(new StringContent(model.Username ?? ""), "Username");
+                form.Add(new StringContent(model.Password ?? ""), "Password");
+                form.Add(new StringContent(model.ConfirmPassword ?? ""), "ConfirmPassword");
+                form.Add(new StringContent(model.Email ?? ""), "Email");
+                form.Add(new StringContent(model.Gender.ToString()), "Gender");
+                form.Add(new StringContent(model.Country ?? ""), "Country");
+                form.Add(new StringContent(model.State ?? ""), "State");
+
+                if (model.Qualifications != null && model.Qualifications.Any())
+                {
+                    foreach (var qual in model.Qualifications)
+                    {
+                        form.Add(new StringContent(qual), "Qualifications");
+                    }
+                }
+
+                if (model.Image != null && model.Image.Length > 0)
+                {
+                    var imageContent = new StreamContent(model.Image.OpenReadStream());
+                    form.Add(imageContent, "Image", model.Image.FileName);
+                }
+
+                if (model.FileUpload != null && model.FileUpload.Length > 0)
+                {
+                    var fileContent = new StreamContent(model.FileUpload.OpenReadStream());
+                    form.Add(fileContent, "FileUpload", model.FileUpload.FileName);
+                }
+
+                HttpResponseMessage response;
+                if (model.UserRole == "User")
+                    response = await client.PostAsync("api/Authenticate/register", form);
+                else
+                    response = await client.PostAsync("api/Authenticate/register-admin", form);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    ViewBag.Msg = "User Registered Successfully";
+                    ModelState.Clear();
+                    model = new RegisterViewModel();
+                }
+                    
+                else
+                    ViewBag.Msg = "Registration Failed";
+
+                // Set ViewBag again before returning view!
+                ViewBag.AvailableQualifications = new List<string>
+                {
+                    "10th",
+                    "12th",
+                    "Diploma",
+                    "Graduate",
+                    "Post Graduate"
+                };
+
+                return View(model);
+            }
+        }
+
+
+        public IActionResult Dashboard()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Logout()
+        {
+            HttpContext.Session.Clear();
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return RedirectToAction("Login", "Login");
+        }
+
+        public class JwtTokenResponse
+        {
+            public string token { get; set; }
+            public DateTime expiration { get; set; }
+        }
+    }
+}
+---------------------------------------------------------------------------
+@model CoreMVC.Models.LoginViewModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4 class="mb-0">Login</h4>
+                </div>
+                <div class="card-body p-4">
+                    <form asp-action="Login" method="post">
+                        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Username" class="form-label fw-bold"></label>
+                            <input asp-for="Username" class="form-control" placeholder="Enter your username" />
+                            <span asp-validation-for="Username" class="text-danger small"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Password" class="form-label fw-bold"></label>
+                            <input asp-for="Password" type="password" class="form-control" placeholder="Enter your password" />
+                            <span asp-validation-for="Password" class="text-danger small"></span>
+                        </div>
+
+                        @if (ViewBag.Msg != null)
+                        {
+                            <div class="alert alert-danger text-center" role="alert">
+                                @ViewBag.Msg
+                            </div>
+                        }
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Login</button>
+                        </div>
+
+                        <div class="text-center mt-3">
+                            <a asp-action="Register" class="text-decoration-none">Don't have an account? Register</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}
+-------------------------------------
+@model CoreMVC.Models.RegisterViewModel
+
+@{
+    ViewData["Title"] = "Register";
+}
+
+<h1 class="text-center mb-4">Register</h1>
+<hr />
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="card shadow">
+                <div class="card-body">
+                    <form asp-action="Register" enctype="multipart/form-data" method="post">
+                        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="FullName" class="form-label"></label>
+                            <input asp-for="FullName" class="form-control" />
+                            <span asp-validation-for="FullName" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Username" class="form-label"></label>
+                            <input asp-for="Username" class="form-control" />
+                            <span asp-validation-for="Username" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Email" class="form-label"></label>
+                            <input asp-for="Email" class="form-control" />
+                            <span asp-validation-for="Email" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Password" class="form-label"></label>
+                            <input asp-for="Password" class="form-control" type="password" />
+                            <span asp-validation-for="Password" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="ConfirmPassword" class="form-label"></label>
+                            <input asp-for="ConfirmPassword" class="form-control" type="password" />
+                            <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Gender" class="form-label d-block"></label>
+                            @foreach (var gender in Enum.GetValues(typeof(CoreMVC.Models.Gender)))
+                            {
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" asp-for="Gender" value="@gender" />
+                                    <label class="form-check-label">@gender</label>
+                                </div>
+                            }
+                            <span asp-validation-for="Gender" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Qualifications" class="form-label d-block"></label>
+                            @foreach (var qual in (List<string>)ViewBag.AvailableQualifications)
+                            {
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="Qualifications" value="@qual"
+                                    @(Model.Qualifications != null && Model.Qualifications.Contains(qual) ? "checked" : "") />
+                                    <label class="form-check-label">@qual</label>
+                                </div>
+                            }
+                            <span asp-validation-for="Qualifications" class="text-danger"></span>
+                        </div>
+
+                        <select id="CountryId" name="Country" class="form-select">
+                            <option value="">-- Select Country --</option>
+                            @foreach (var country in ViewBag.Countries)
+                            {
+                                <option value="@country.CountryId">@country.CountryName</option>
+                            }
+                        </select>
+                        <br />
+                        <select id="StateId" name="State" class="form-select">
+                            <option value="">-- Select State --</option>
+                        </select>
+
+
+
+                        <div class="form-group mb-3">
+                            <label asp-for="Image" class="form-label"></label>
+                            <input asp-for="Image" type="file" class="form-control" />
+                            <span asp-validation-for="Image" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label asp-for="FileUpload" class="form-label"></label>
+                            <input asp-for="FileUpload" type="file" class="form-control" />
+                            <span asp-validation-for="FileUpload" class="text-danger"></span>
+                        </div>
+
+                        <div class="form-group mb-4">
+                            <label asp-for="UserRole" class="form-label"></label>
+                            <select asp-for="UserRole" class="form-select">
+                                <option value="0">--Select--</option>
+                                <option value="User">User</option>
+                                <option value="Admin">Admin</option>
+                            </select>
+                            <span asp-validation-for="UserRole" class="text-danger"></span>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Register</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="text-center mt-3">
+                @if (ViewBag.Msg != null)
+                {
+                    <div class="alert alert-info">@ViewBag.Msg</div>
+                }
+                <a asp-action="Login" class="btn btn-link">Back to Login</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script>
+    $(document).ready(function () {
+       
+        $('#CountryId').on('change', function () {
+            var selectedCountryId = $(this).val(); 
+            
+            $('#StateId').empty().append('<option value="">-- Select State --</option>');
+            console.log(selectedCountryId);
+            if (selectedCountryId) {
+                $.get('http://localhost:5236/api/Authenticate/GetStatesByCountry/'+selectedCountryId, function (data) {
+         
+                    if (data.length > 0) {
+                        console.log(data);
+                        $.each(data, function (i, state) {
+                            $('#StateId').append('<option value="' + state.stateId + '">' + state.stateName + '</option>');
+                        });
+                    } else {
+                        $('#StateId').append('<option value="">No states available</option>');
+                    }
+                }).fail(function () {
+                    alert('Error fetching states.');
+                });
+            }
+        });
+    });
+</script>
+-----------------------------------------------
+using System.Security.Claims;
+using CoreMVC.Models;
+using CoreMVC.Repository;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace CoreMVC.Controllers
+{
+    [Authorize(Roles = "User")]
+    public class UserDashboardController : Controller
+    {
+        private readonly IProdRepository _repository;
+
+        public UserDashboardController(IProdRepository repository)
+        {
+            _repository = repository;
+        }
+
+        public IActionResult Index()
+        {
+            var username = HttpContext.Session.GetString("Username") ?? "User";
+            ViewBag.Username = username;
+            return View();
+        }
+
+        public IActionResult AddProducts()
+        {
+            var model = new ProductSalesViewModel
+            {
+                Categories = _repository.GetCategories(),
+                SubCategories = new List<Subcategory>(),
+                Products = new List<Product>()
+            };
+            return View(model);
+        }
+
+        // AJAX: Get Subcategories
+        [HttpPost]
+        public JsonResult GetSubcategories(int categoryId)
+        {
+            var subcategories = _repository.GetSubcategories(categoryId);
+            return Json(subcategories);
+        }
+
+        // AJAX: Get Products
+        [HttpPost]
+        public JsonResult GetProducts(int subCategoryId)
+        {
+            var products = _repository.GetProducts(subCategoryId);
+            return Json(products);
+        }
+
+        // AJAX: Get Product Details (price & stock)
+        [HttpPost]
+        public JsonResult GetProductDetails(int productId)
+        {
+            var product = _repository.GetProductById(productId);
+            if (product == null)
+                return Json(new { success = false });
+
+            return Json(new
+            {
+                price = product.Price,
+                stock = product.Stock,
+                success = true
+            });
+        }
+
+        // Submit sales
+        [HttpPost]
+        public IActionResult SubmitSale(ProductSalesViewModel model)
+        {
+            if (!ModelState.IsValid)
+            {
+                model.Categories = _repository.GetCategories();
+                model.SubCategories = model.SelectedCategoryId.HasValue
+                    ? _repository.GetSubcategories(model.SelectedCategoryId.Value)
+                    : new List<Subcategory>();
+
+                model.Products = model.SelectedSubCategoryId.HasValue
+                    ? _repository.GetProducts(model.SelectedSubCategoryId.Value)
+                    : new List<Product>();
+
+                TempData["Message"] = "Please fill in all required fields correctly.";
+                return View("AddProducts", model);
+            }
+
+            var customerName = User.FindFirstValue(ClaimTypes.Name);
+
+            var salesData = new SalesData
+            {
+                ProductId = model.SelectedProductId.Value,
+                CustomerName = customerName,
+                RequiredQuantity = model.Quantity,
+                OrderDate = model.OrderDate,
+                TotalPrice = model.TotalPrice
+            };
+
+            var message = _repository.SubmitSales(salesData);
+            TempData["Message"] = message;
+            return RedirectToAction("AddProducts");
+        }
+
+
+        public IActionResult UserProfile()
+        {
+            var token = HttpContext.Session.GetString("JWToken");
+            if (string.IsNullOrEmpty(token)) return RedirectToAction("Login", "Login");
+
+            var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+            var jwt = handler.ReadJwtToken(token);
+
+            var profile = new ProfileViewModel
+            {
+                FullName = jwt.Claims.FirstOrDefault(c => c.Type == "FullName")?.Value,
+                Username = jwt.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Name)?.Value,
+                Email = jwt.Claims.FirstOrDefault(c => c.Type == System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Email)?.Value,
+                Gender = jwt.Claims.FirstOrDefault(c => c.Type == "Gender")?.Value,
+                Country = jwt.Claims.FirstOrDefault(c => c.Type == "Country")?.Value,
+                State = jwt.Claims.FirstOrDefault(c => c.Type == "State")?.Value,
+                ImagePath = jwt.Claims.FirstOrDefault(c => c.Type == "ImagePath")?.Value,
+                FileUploadPath = jwt.Claims.FirstOrDefault(c => c.Type == "FileUploadPath")?.Value,
+                Qualifications = jwt.Claims.Where(c => c.Type == "Qualifications").Select(c => c.Value).ToList()
+            };
+
+            return View("UserProfile", profile);
+        }
+
+      
+        public IActionResult ViewOrders()
+        {
+            var username = User.FindFirstValue(ClaimTypes.Name);
+
+            // Get orders for the current user
+            var orders = _repository.GetSalesByCustomer(username);
+
+            return View(orders); // Pass the list directly to the view
+        }
+    }
+}
+-------------------------------------------------------------------------------
+@{
+    ViewData["Title"] = "User Dashboard";
+    var username = ViewBag.Username ?? "User";
+}
+
+<div class="container d-flex justify-content-center align-items-center vh-100">
+    <div class="text-center">
+        <h1 class="text-primary mb-4">Welcome, @username</h1>
+
+        <div class="card p-4 shadow-sm" style="border-radius: 15px;">
+            <h5 class="mb-4 font-weight-bold text-dark">Manage Your Account</h5>
+
+            <a asp-action="AddProducts" class="btn btn-outline-primary btn-block mb-3">Add Products</a>
+            <a asp-action="ViewOrders" class="btn btn-outline-primary btn-block mb-3">View Orders</a>
+            <a asp-controller="UserDashboard" asp-action="UserProfile" class="btn btn-outline-primary btn-block mb-3">View Profile</a>
+        </div>
+    </div>
+</div>
+----------------------------------------------------
+@model CoreMVC.Models.ProductSalesViewModel
+
+@{
+    ViewData["Title"] = "Add Product Sale";
+}
+
+<h2 class="text-primary mb-4">Product Sales</h2>
+
+@if (TempData["Message"] != null)
+{
+    <div class="alert alert-success">@TempData["Message"]</div>
+}
+
+<form asp-action="SubmitSale" method="post">
+    <div class="form-group">
+        <label>Category</label>
+        <select id="categoryDropdown" name="SelectedCategoryId" class="form-control" required>
+            <option value="">-- Select Category --</option>
+            @foreach (var category in Model.Categories)
+            {
+                <option value="@category.CategoryId">@category.CategoryName</option>
+            }
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Subcategory</label>
+        <select id="subcategoryDropdown" name="SelectedSubCategoryId" class="form-control" disabled required>
+            <option value="">-- Select Subcategory --</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Product</label>
+        <select id="productDropdown" name="SelectedProductId" class="form-control" disabled required>
+            <option value="">-- Select Product --</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Available Stock</label>
+        <input type="text" id="availableStock" class="form-control" readonly />
+    </div>
+
+    <div class="form-group">
+        <label>Base Price</label>
+        <input type="text" id="basePrice" class="form-control" readonly />
+    </div>
+
+    <div class="form-group">
+        <label>Quantity</label>
+        <input type="number" id="quantityInput" name="Quantity" class="form-control" min="1" required />
+        <span id="quantityError" class="text-danger"></span>
+    </div>
+
+    <div class="form-group">
+        <label>Total Price</label>
+        <input type="text" id="totalPrice" name="TotalPrice" class="form-control" readonly />
+    </div>
+
+    <!-- Removed Customer Name input field as it's automatically derived from Claims -->
+
+    <button type="submit" class="btn btn-primary">Order Now</button>
+    <button type="reset" class="btn btn-secondary">Clear</button>
+</form>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            let availableStock = 0;
+            let pricePerUnit = 0;
+
+            $('#categoryDropdown').change(function () {
+                const categoryId = $(this).val();
+                $('#subcategoryDropdown').empty().append('<option value="">-- Select Subcategory --</option>');
+                $('#subcategoryDropdown').prop('disabled', true);
+                $('#productDropdown').empty().append('<option value="">-- Select Product --</option>').prop('disabled', true);
+
+                if (categoryId) {
+                    $.ajax({
+                        type: 'POST',
+                        url: '/UserDashboard/GetSubcategories',
+                        data: { categoryId: categoryId },
+                               success: function (subcategories) {
+                                $('#subcategoryDropdown').empty().append('<option value="">-- Select Subcategory --</option>'); // <-- Clear here
+                                $.each(subcategories, function (i, subcat) {
+                                    $('#subcategoryDropdown').append(
+                                        $('<option></option>').val(subcat.subcategoryId).text(subcat.subcategoryName)
+                                    );
+                                });
+                                $('#subcategoryDropdown').prop('disabled', false);
+                            }
+                    });
+                }
+            });
+
+            $('#subcategoryDropdown').change(function () {
+            const subCatId = $(this).val();
+
+            // Reset product dropdown before AJAX call as a fallback
+            $('#productDropdown').empty().append('<option value="">-- Select Product --</option>').prop('disabled', true);
+
+            if (subCatId) {
+                $.ajax({
+                    type: 'POST',
+                    url: '/UserDashboard/GetProducts',
+                    data: { subCategoryId: subCatId },
+                    success: function (products) {
+                        console.log(products);
+                        // Clear again inside success — safe against multiple appends
+                        $('#productDropdown').empty().append('<option value="">-- Select Product --</option>');
+
+                        $.each(products, function (i, product) {
+                            $('#productDropdown').append(
+                                $('<option></option>').val(product.productId).text(product.productName)
+                            );
+                        });
+
+                        $('#productDropdown').prop('disabled', false);
+                    }
+                });
+            }
+        });
+
+
+            $('#productDropdown').change(function () {
+                const productId = $(this).val();
+                $('#availableStock').val('');
+                $('#basePrice').val('');
+                $('#quantityInput').val('');
+                $('#totalPrice').val('');
+
+                if (productId) {
+                    $.ajax({
+                        type: 'POST',
+                        url: '/UserDashboard/GetProductDetails',
+                        data: { productId: productId },
+                        success: function (res) {
+                            if (res.success) {
+                                availableStock = res.stock;
+                                pricePerUnit = res.price;
+
+                                $('#availableStock').val(availableStock);
+                                $('#basePrice').val(pricePerUnit.toFixed(2));
+                                $('#quantityInput').data('price', pricePerUnit);
+                            }
+                        }
+                    });
+                }
+            });
+
+            $('#quantityInput').on('input', function () {
+                const quantity = parseInt($(this).val(), 10);
+                const price = parseFloat($('#quantityInput').data('price')) || 0;
+
+                if (isNaN(quantity) || quantity <= 0) {
+                    $('#quantityError').text('Enter a valid quantity.');
+                    $('#totalPrice').val('');
+                } else if (quantity > availableStock) {
+                    $('#quantityError').text('Insufficient stock.');
+                    $('#totalPrice').val('');
+                } else {
+                    $('#quantityError').text('');
+                    $('#totalPrice').val((quantity * price).toFixed(2));
+                }
+            });
+        });
+    </script>
+}
+---------------------------------------------------
+@model List<CoreMVC.Models.SalesData>
+
+@{
+    ViewData["Title"] = "My Orders";
+}
+
+<h2>My Orders</h2>
+
+@if (Model != null && Model.Any())
+{
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Total Price</th>
+                <th>Order Date</th>
+                <th>Status</th> 
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var order in Model)
+            {
+                <tr>
+                    <td>@order.ProductName</td>
+                    <td>@order.RequiredQuantity</td>
+                    <td>@order.TotalPrice.ToString()</td>
+                    <td>@order.OrderDate.ToString("yyyy-MM-dd")</td>
+                    <td>@order.Status</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p>No orders found.</p>
+}
+---------------------------------------------------------------------
+using AuthenticationWebAPI5.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using CoreMVC.Repository;
+using CoreMVC.Models;
+using System.Security.Claims;
+using AuthenticationWebAPI5.Model;
+
+namespace CoreMVC.Controllers
+{
+    [Authorize(Roles = "Admin")]
+    public class AdminDashboardController : Controller
+    {
+        private readonly UserManager<ApplicationUser> _userManager;  //ApplicationUser
+        private readonly IProdRepository _prodRepository;
+        private readonly ApplicationDbContext _context;
+       
+
+        public AdminDashboardController(UserManager<ApplicationUser> userManagert, ApplicationDbContext context, IProdRepository prodRepository)
+        {
+            _userManager = userManagert;
+            _context = context;
+            _prodRepository = prodRepository;
+        }
+        public IActionResult Index()
+        {
+            return View();
+        }
+
+
+        public async Task<IActionResult> ViewUsers()
+        {
+            var users = await _userManager.GetUsersInRoleAsync("User");
+
+            var userProfiles = users.Select(user => new ProfileViewModel
+            {
+                FullName = user.FullName,
+                Email = user.Email,
+                Username = user.UserName,
+                Gender = user.Gender.ToString(),
+                Country = user.Country,
+                State = user.State,
+                ImagePath = user.ImagePath,
+                FileUploadPath = user.FileUploadPath,
+                Qualifications = user.Qualifications ?? new List<string>()
+            }).ToList();
+
+            return View(userProfiles);
+        }
+
+
+        public IActionResult ViewOrders()
+        {
+            var orders = _prodRepository.GetAllOrders();
+            return View(orders);
+        }
+
+        [HttpPost]
+        public IActionResult UpdateOrderStatus(int orderId, string newStatus)
+        {
+            bool result = _prodRepository.UpdateOrderStatus(orderId, newStatus);
+            return RedirectToAction("ViewOrders");
+        }
+
+        public IActionResult AdminProfile()
+        {
+            return View();
+        }
+
+    }
+}
+------------------------------------------------------
+admin: index:
+<div class="container mt-4">
+    <div class="row">
+       
+        <div class="col-4">
+            <div class="card" style="width: 100%;">
+                <div class="card-header bg-dark text-white fw-bold">View Orders</div>
+                <div class="card-body">
+                    <h6>View and Manage all Customers</h6>
+                    <a href="/AdminDashboard/ViewOrders" class="btn btn-primary mt-2">View Orders</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-4">
+            <div class="card" style="width: 100%;">
+                <div class="card-header bg-dark text-white fw-bold">View Users</div>
+                <div class="card-body">
+                    <h6>Manage Customer account and information</h6>
+                    <a href="/AdminDashboard/ViewUsers" class="btn btn-primary mt-2">View Users</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-4">
+            <div class="card" style="width: 100%;">
+                <div class="card-header bg-dark text-white fw-bold">View Profile</div>
+                <div class="card-body">
+                    <h6>My Profile</h6>
+                    <a href="/AdminDashboard/AdminProfile" class="btn btn-primary mt-2">My Profile</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+--------------------------------------------------
+view users: 
+
+@model List<CoreMVC.Models.ProfileViewModel>
+
+@{
+    ViewData["Title"] = "All Registered Users";
+}
+
+<h2 class="mb-4 text-primary">Registered Users</h2>
+
+<table class="table table-bordered table-striped">
+    <thead class="table-dark">
+        <tr>
+            <th>Profile Image</th>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>Username</th>
+            <th>Gender</th>
+            <th>Country</th>
+            <th>State</th>
+            <th>Qualifications</th>
+            <th>Download File</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in Model)
+        {
+            <tr>
+                <td>
+                    @if (!string.IsNullOrEmpty(user.ImagePath))
+                    {
+                        <img src="@user.ImagePath" class="img-thumbnail" style="max-width: 80px;" alt="Profile Image" />
+                    }
+                    else
+                    {
+                        <span>No image</span>
+                    }
+                </td>
+                <td>@user.FullName</td>
+                <td>@user.Email</td>
+                <td>@user.Username</td>
+                <td>@user.Gender</td>
+                <td>@user.Country</td>
+                <td>@user.State</td>
+                <td>@string.Join(", ", user.Qualifications ?? new List<string>())</td>
+                <td>
+                    @if (!string.IsNullOrEmpty(user.FileUploadPath))
+                    {
+                        <a href="@user.FileUploadPath" class="btn btn-sm btn-success" target="_blank">Download</a>
+                    }
+                    else
+                    {
+                        <span>No file</span>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+--------------------------------------------------
+@model List<CoreMVC.Models.Order>
+@{
+    ViewData["Title"] = "All Orders";
+    var statuses = new List<string> { "Under Processing", "On the Way", "Delivered" };
+}
+
+<div class="container mt-4">
+    <h2 class="mb-4">Customer Orders</h2>
+    <table class="table table-bordered">
+        <thead class="thead-dark">
+            <tr>
+                <th>Customer Name</th>
+                <th>Product</th>
+                <th>Quantity</th>
+                <th>Order Date</th>
+                <th>Status</th>
+                <th>Change Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var order in Model)
+            {
+                <tr>
+                    <td>@order.Username</td>
+                    <td>@order.ProductName</td>
+                    <td>@order.Quantity</td>
+                    <td>@order.OrderDate.ToShortDateString()</td>
+                    <td>@order.Status</td>
+                    <td>
+                        <form asp-action="UpdateOrderStatus" method="post">
+                            <input type="hidden" name="orderId" value="@order.Id" />
+                            <select name="newStatus" class="form-control d-inline-block w-75">
+                                @foreach (var status in statuses)
+                                {
+                                    if (status == order.Status)
+                                    {
+                                        <option value="@status" selected>@status</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="@status">@status</option>
+                                    }
+                                }
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-success mt-2">Update</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+----------------------------------------------------------------------
+@model CoreMVC.Models.ProfileViewModel
+@{
+    ViewData["Title"] = "Admin Profile";
+}
+<h2>Admin Profile</h2>
+<hr />
+<div class="row">
+    <div class="col-md-4">
+      
+        <img src="@Model.ImagePath" class="img-thumbnail" alt="Admin Image" style="max-width: 200px;" />
+    </div>
+    <div class="col-md-8">
+        <table class="table table-bordered">
+            <tr><th>Full Name</th><td>@Model.FullName</td></tr>
+            <tr><th>Username</th><td>@Model.Username</td></tr>
+            <tr><th>Email</th><td>@Model.Email</td></tr>
+            <tr><th>Gender</th><td>@Model.Gender</td></tr>
+            <tr><th>Country</th><td>@Model.Country</td></tr>
+            <tr><th>State</th><td>@Model.State</td></tr>
+            <tr><th>Qualifications</th><td>@string.Join(", ", Model.Qualifications)</td></tr>
+            <tr>
+                <th>File</th>
+                <td>
+                    @if (!string.IsNullOrEmpty(Model.FileUploadPath))
+                    {
+                        <a href="@Model.FileUploadPath" class="btn btn-sm btn-success" target="_blank">Download File</a>
+                    }
+                    else
+                    {
+                        <span>No File</span>
+                    }
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>
