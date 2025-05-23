@@ -1,0 +1,137 @@
+ @using Microsoft.AspNetCore.Identity
+@using AuthenticationWebAPI5.Authentication
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+
+@{
+    var user = User;
+    var isAuthenticated = user.Identity.IsAuthenticated;
+    var isAdmin = user.IsInRole("Admin");
+    var isUser = user.IsInRole("User");
+    string currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    string currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - CoreMVC</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/CoreMVC.styles.css" asp-append-version="true" />
+</head>
+<body>
+    @{
+
+        var username = Context.Session.GetString("Username");
+        var role = Context.Session.GetString("Role");
+        bool isLoggedIn = !string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(role);
+    }
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-light bg-light">
+            <a class="navbar-brand" href="@Url.Action("Index", "Home")">MyApp</a>
+
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <!-- All items aligned to right -->
+                <ul class="navbar-nav ml-auto">
+                    @if (!isLoggedIn)
+                    {
+                        if (currentAction == "Login")
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" href="@Url.Action("Register", "Login")">Register</a>
+                            </li>
+                        }
+                        else if (currentAction == "Register")
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" href="@Url.Action("Login", "Login")">Login</a>
+                            </li>
+                        }
+                        else
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" href="@Url.Action("Login", "Login")">Login</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="@Url.Action("Register", "Login")">Register</a>
+                            </li>
+                        }
+                    }
+                    else if (role == "Admin")
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("Manage", "Product")">Manage Products</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("ViewOrders", "AdminDashboard")">View Orders</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("ViewUsers", "AdminDashboard")">View Users</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("AdminProfile", "AdminDashboard")">Profile</a>
+                        </li>
+                        <li class="nav-item">
+                            <form method="post" asp-controller="Login" asp-action="Logout" class="form-inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link nav-link" style="padding:0;">Logout</button>
+                            </form>
+                        </li>
+                    }
+                    else if (role == "User")
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("ViewProducts", "UserDashboard")">View Products</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("MyOrders", "Order")">View Orders</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="@Url.Action("UserProfile", "UserDashboard")">Profile</a>
+                        </li>
+                        <li class="nav-item">
+                            <form method="post" asp-controller="Login" asp-action="Logout" class="form-inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn-link nav-link" style="padding:0;">Logout</button>
+                            </form>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+        </nav>
+    </header>
+
+
+
+
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2025 - MyWebApp - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+        </div>
+    </footer>
+
+    @* <script src="~/lib/jquery/dist/jquery.min.js"></script> *@
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script> 
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
